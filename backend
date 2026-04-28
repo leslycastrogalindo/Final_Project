@@ -1,0 +1,56 @@
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+from fastapi.middleware.cors import CORSMiddleware
+import sqlite3
+import requests
+
+app = FastAPI()
+
+# Enable CORS so your React app can talk to this backend
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Initialize Database
+def init_db():
+    conn = sqlite3.connect("goals.db")
+    conn.execute("CREATE TABLE IF NOT EXISTS goals (id INTEGER PRIMARY KEY, title TEXT, status TEXT)")
+    conn.commit()
+    conn.close()
+
+init_db()
+
+class Goal(BaseModel):
+    title: str
+
+@app.post("/goals")
+async def create_goal(goal: Goal):
+    conn = sqlite3.connect("goals.db")
+    cursor = conn.cursor()
+    cursor.execute("INSERT INTO goals (title, status) VALUES (?, ?)", (goal.title, "pending"))
+    conn.commit()
+    conn.close()
+    return {"message": "Goal saved!"}
+
+@app.get("/coach/{goal_id}")
+async def get_coaching(goal_id: int):
+    # 1. Fetch goal from DB
+    conn = sqlite3.connect("goals.db")
+    goal = conn.execute("SELECT title FROM goals WHERE id = ?", (goal_id,)).fetchone()
+    conn.close()
+    
+    if not goal:
+        raise HTTPException(status_code=404, detail="Goal not found")
+
+    # 2. Ask Local AI (Ollama) for reasoning
+    prompt = f"Break down this goal into 3 tiny, actionable steps for today: {goal[0]}"
+    
+    try:
+        response = requests.post("http://localhost:11434/api/generate", 
+                                 json={"model": "llama3", "prompt": prompt, "stream": False})
+        return {"coaching_advice": response.json()['response']}
+    except:
+        return {"coaching_advice": "Coach is offline. Is Ollama running?"}
