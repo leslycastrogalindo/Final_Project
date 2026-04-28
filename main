@@ -1,100 +1,56 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <script src="https://cdn.tailwindcss.com"></script>
-    <title>DeepGoal Coach</title>
-</head>
-<body class="bg-zinc-950 text-zinc-100 flex h-screen overflow-hidden">
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+from fastapi.middleware.cors import CORSMiddleware
+import sqlite3
+import requests
 
-    <aside class="w-64 bg-zinc-900 border-r border-zinc-800 flex flex-col">
-        <div class="p-6">
-            <h1 class="text-xl font-bold text-emerald-500 italic">DeepGoal</h1>
-        </div>
-        <nav class="flex-1 px-4 space-y-2">
-            <button onclick="showView('strategy')" class="w-full text-left p-3 rounded hover:bg-zinc-800 focus:bg-emerald-900">🏠 Strategy Room</button>
-            <button onclick="showView('chat')" class="w-full text-left p-3 rounded hover:bg-zinc-800 focus:bg-emerald-900">💬 Coaching Chat</button>
-            <button onclick="showView('roadmap')" class="w-full text-left p-3 rounded hover:bg-zinc-800 focus:bg-emerald-900">🗺️ Goal Roadmap</button>
-            <button onclick="showView('analysis')" class="w-full text-left p-3 rounded hover:bg-zinc-800 focus:bg-emerald-900">🔬 Pattern Lab</button>
-        </nav>
-        <div class="p-4 border-t border-zinc-800 text-xs text-zinc-500 text-center">
-            Locally Served • Privacy Active
-        </div>
-    </aside>
+app = FastAPI()
 
-    <main class="flex-1 relative flex flex-col h-full overflow-y-auto bg-zinc-950">
-        
-        <section id="view-strategy" class="view-content p-8">
-            <h2 class="text-3xl font-bold mb-4">Welcome back, Captain.</h2>
-            <div class="grid grid-cols-2 gap-6">
-                <div class="bg-zinc-900 p-6 rounded-xl border border-zinc-800">
-                    <h3 class="text-zinc-400 text-sm mb-2">Current Focus</h3>
-                    <p class="text-xl font-semibold">Marathon Training: Week 4</p>
-                </div>
-                <div class="bg-zinc-900 p-6 rounded-xl border border-zinc-800">
-                    <h3 class="text-zinc-400 text-sm mb-2">Coach Insight</h3>
-                    <p class="text-emerald-400 font-medium">"You've been consistent, but Wednesdays are your friction point."</p>
-                </div>
-            </div>
-        </section>
+# Enable CORS so your React app can talk to this backend
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-        <section id="view-chat" class="view-content hidden flex flex-col h-full p-8">
-            <div id="chat-history" class="flex-1 overflow-y-auto space-y-4 mb-4">
-                <div class="bg-zinc-900 p-4 rounded-lg max-w-2xl">Coach: How are you feeling about your goals today?</div>
-            </div>
-            <div class="flex gap-2">
-                <input id="chat-input" class="flex-1 bg-zinc-900 border border-zinc-800 rounded p-4 focus:outline-emerald-500" placeholder="Talk to your coach...">
-                <button onclick="sendMessage()" class="bg-emerald-600 px-8 rounded font-bold">Send</button>
-            </div>
-        </section>
+# Initialize Database
+def init_db():
+    conn = sqlite3.connect("goals.db")
+    conn.execute("CREATE TABLE IF NOT EXISTS goals (id INTEGER PRIMARY KEY, title TEXT, status TEXT)")
+    conn.commit()
+    conn.close()
 
-        <section id="view-roadmap" class="view-content hidden p-8">
-            <h2 class="text-3xl font-bold mb-6">Your Long-Term Roadmap</h2>
-            <div class="space-y-4">
-                <div class="p-4 border-l-4 border-emerald-500 bg-zinc-900 rounded-r">
-                    <h4 class="font-bold">Goal: Launch Web App</h4>
-                    <p class="text-zinc-400 text-sm italic">Status: 3/10 Milestones Complete</p>
-                </div>
-            </div>
-        </section>
+init_db()
 
-        <section id="view-analysis" class="view-content hidden p-8">
-            <h2 class="text-3xl font-bold mb-6 text-zinc-500 underline decoration-emerald-500">Pattern Lab</h2>
-            <p>Gathering your activity data to find successes and inconsistencies...</p>
-        </section>
+class Goal(BaseModel):
+    title: str
 
-    </main>
+@app.post("/goals")
+async def create_goal(goal: Goal):
+    conn = sqlite3.connect("goals.db")
+    cursor = conn.cursor()
+    cursor.execute("INSERT INTO goals (title, status) VALUES (?, ?)", (goal.title, "pending"))
+    conn.commit()
+    conn.close()
+    return {"message": "Goal saved!"}
 
-    <script>
-        // VIEW SWITCHING LOGIC
-        function showView(viewId) {
-            // Hide all sections
-            document.querySelectorAll('.view-content').forEach(section => {
-                section.classList.add('hidden');
-            });
-            // Show the clicked section
-            document.getElementById('view-' + viewId).classList.remove('hidden');
-        }
+@app.get("/coach/{goal_id}")
+async def get_coaching(goal_id: int):
+    # 1. Fetch goal from DB
+    conn = sqlite3.connect("goals.db")
+    goal = conn.execute("SELECT title FROM goals WHERE id = ?", (goal_id,)).fetchone()
+    conn.close()
+    
+    if not goal:
+        raise HTTPException(status_code=404, detail="Goal not found")
 
-        // CHAT LOGIC
-        async function sendMessage() {
-            const input = document.getElementById('chat-input');
-            const history = document.getElementById('chat-history');
-            if (!input.value) return;
-
-            history.innerHTML += `<div class="text-right"><span class="bg-emerald-900 p-3 rounded-lg inline-block">${input.value}</span></div>`;
-            
-            const response = await fetch('/chat', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({message: input.value})
-            });
-            const data = await response.json();
-            history.innerHTML += `<div class="bg-zinc-900 p-4 rounded-lg max-w-2xl">${data.reply}</div>`;
-            
-            input.value = '';
-            history.scrollTop = history.scrollHeight;
-        }
-    </script>
-</body>
-</html>
+    # 2. Ask Local AI (Ollama) for reasoning
+    prompt = f"Break down this goal into 3 tiny, actionable steps for today: {goal[0]}"
+    
+    try:
+        response = requests.post("http://localhost:11434/api/generate", 
+                                 json={"model": "llama3", "prompt": prompt, "stream": False})
+        return {"coaching_advice": response.json()['response']}
+    except:
+        return {"coaching_advice": "Coach is offline. Is Ollama running?"}
