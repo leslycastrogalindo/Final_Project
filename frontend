@@ -1,0 +1,40 @@
+import React, { useState } from 'react';
+
+function App() {
+  const [goal, setGoal] = useState("");
+  const [advice, setAdvice] = useState("");
+
+  const handleSubmit = async () => {
+    await fetch("http://localhost:8000/goals", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: goal })
+    });
+    
+    // Simulating fetching advice for the first goal (ID 1)
+    const res = await fetch("http://localhost:8000/coach/1");
+    const data = await res.json();
+    setAdvice(data.coaching_advice);
+  };
+
+  return (
+    <div style={{ padding: '20px', fontFamily: 'sans-serif' }}>
+      <h1>Personal AI Coach</h1>
+      <input 
+        value={goal} 
+        onChange={(e) => setGoal(e.target.value)} 
+        placeholder="Enter a big goal..." 
+      />
+      <button onClick={handleSubmit}>Get Coaching</button>
+      
+      {advice && (
+        <div style={{ marginTop: '20px', background: '#f0f0f0', padding: '15px' }}>
+          <h3>Coach's Reasoning:</h3>
+          <p>{advice}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default App;
